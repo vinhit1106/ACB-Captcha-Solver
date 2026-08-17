@@ -21,9 +21,13 @@ internal: the caller does not run or call a second CAPTCHA service.
 The response contains `transactions` and never returns credentials, cookies, or
 ACB tokens.
 
-For a trusted private deployment, credentials can instead be set as
-`ACB_USERNAME` and `ACB_PASSWORD` environment variables. Do not expose an
-environment-configured deployment publicly without authentication in front of it.
+To reuse an already verified device session instead of logging in, pass
+`cookie` (the complete browser Cookie header), `dse_session_id`, and
+`account_number`. For a private deployment, set `ACB_COOKIE_HEADER` and
+`ACB_DSE_SESSION_ID` as deployment secrets instead. The API tries this session
+directly; it does not trigger the CAPTCHA/login flow unless that session expires.
+If you also supply credentials, it logs in once only after the trusted session
+expires. Never commit cookies/tokens, and do not expose this API publicly.
 
 ## Internal flow
 

@@ -25,6 +25,17 @@ class TransactionApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json["error"], "credentials_required")
 
+    def test_trusted_cookie_is_loaded_into_the_acb_domain_only(self):
+        client = index.ACBClient(None, None, 2, cookie_header="token=abc; JSESSIONID=session", session_id="dse")
+        cookies = client.http.cookies.get_dict(domain="online.acb.com.vn")
+        self.assertEqual(cookies, {"token": "abc", "JSESSIONID": "session"})
+        self.assertEqual(client.session_id, "dse")
+
+    def test_endpoint_requires_a_complete_trusted_session(self):
+        response = index.app.test_client().post("/api/transactions", json={"cookie": "token=abc"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["error"], "trusted_session_incomplete")
+
 
 if __name__ == "__main__":
     unittest.main()

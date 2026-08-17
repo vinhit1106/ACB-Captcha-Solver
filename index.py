@@ -4,6 +4,7 @@ import base64
 import os
 import time
 from datetime import date, datetime, timedelta
+from http.cookies import CookieError, SimpleCookie
 from io import BytesIO
 from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -103,10 +104,17 @@ def solve_captcha_bytes(image: bytes) -> str:
 class ACBClient:
     """One isolated ACB session; never persists or exposes cookies/tokens."""
 
-    def __init__(self, username: str, password: str, max_captcha_retries: int):
+    def __init__(
+        self,
+        username: str | None,
+        password: str | None,
+        max_captcha_retries: int,
+        cookie_header: str | None = None,
+        session_id: str | None = None,
+    ):
         self.username, self.password = username, password
         self.max_captcha_retries = max_captcha_retries
-        self.session_id: str | None = None
+        self.session_id = session_id
         self.login_page_url: str | None = None
         self.http = requests.Session()
         retry = Retry(total=2, connect=2, read=2, backoff_factor=0.3,
@@ -118,6 +126,24 @@ class ACBClient:
                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
             "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8,vi;q=0.7",
         })
+        if cookie_header:
+            self.load_trusted_device_cookies(cookie_header)
+
+    def load_trusted_device_cookies(self, cookie_header: str) -> None:
+        """Load an authenticated browser session without persisting it."""
+        if not isinstance(cookie_header, str) or not cookie_header.strip():
+            raise ACBError("invalid_request", "'cookie' must be a non-empty Cookie header.", 400)
+        if "\r" in cookie_header or "\n" in cookie_header:
+            raise ACBError("invalid_request", "'cookie' contains invalid characters.", 400)
+        cookies = SimpleCookie()
+        try:
+            cookies.load(cookie_header)
+        except CookieError as exc:
+            raise ACBError("invalid_request", "'cookie' is not a valid Cookie header.", 400) from exc
+        if not cookies:
+            raise ACBError("invalid_request", "'cookie' is not a valid Cookie header.", 400)
+        for name, morsel in cookies.items():
+            self.http.cookies.set(name, morsel.value, domain="online.acb.com.vn", path="/")
 
     def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         try:
@@ -197,6 +223,8 @@ class ACBClient:
         return self._check_login_response(response.text)
 
     def login(self) -> None:
+        if not self.username or not self.password:
+            raise ACBError("credentials_required", "Credentials are required to create a new ACB session.", 400)
         self.init_session()
         self.get_login_page()
         for _ in range(self.max_captcha_retries):
@@ -283,24 +311,46 @@ def transactions():
         content = request.get_json(silent=True) or {}
         username = content.get("username") or os.getenv("ACB_USERNAME")
         password = content.get("password") or os.getenv("ACB_PASSWORD")
-        if not isinstance(username, str) or not isinstance(password, str) or not username or not password:
-            raise ACBError("credentials_required", "Provide username and password, or configure server credentials.", 400)
+        cookie_header = content.get("cookie") or os.getenv("ACB_COOKIE_HEADER")
+        session_id = content.get("dse_session_id") or os.getenv("ACB_DSE_SESSION_ID")
+        has_trusted_session = bool(cookie_header or session_id)
+        if has_trusted_session and (not isinstance(cookie_header, str) or not isinstance(session_id, str)):
+            raise ACBError(
+                "trusted_session_incomplete",
+                "Both 'cookie' and 'dse_session_id' are required for a trusted-device session.",
+                400,
+            )
+        if not has_trusted_session and (
+            not isinstance(username, str) or not isinstance(password, str) or not username or not password
+        ):
+            raise ACBError("credentials_required", "Provide credentials or a trusted-device session.", 400)
         account_number = content.get("account_number") or username
         if not isinstance(account_number, str) or not account_number:
-            raise ACBError("invalid_request", "'account_number' must be a non-empty string.", 400)
+            raise ACBError("invalid_request", "'account_number' is required for a cookie-only request.", 400)
         to_date = parse_iso_date(content["to_date"], "to_date") if "to_date" in content else date.today()
         from_date = parse_iso_date(content["from_date"], "from_date") if "from_date" in content else to_date - timedelta(days=3)
         if from_date > to_date:
             raise ACBError("invalid_request", "'from_date' cannot be after 'to_date'.", 400)
-        client = ACBClient(username, password, DEFAULT_CAPTCHA_RETRIES)
-        client.login()
+        client = ACBClient(
+            username, password, DEFAULT_CAPTCHA_RETRIES,
+            cookie_header=cookie_header if has_trusted_session else None,
+            session_id=session_id if has_trusted_session else None,
+        )
         try:
+            if not has_trusted_session:
+                client.login()
             result = client.get_transactions(from_date, to_date, account_number)
         except ACBError as exc:
             # ACB can invalidate a session between authenticated requests. Start
             # one clean login/session once; do not loop indefinitely.
             if exc.code != "session_expired":
                 raise
+            if not username or not password:
+                raise ACBError(
+                    "session_expired",
+                    "Trusted-device session expired. Supply credentials to create a new session.",
+                    401,
+                ) from exc
             client = ACBClient(username, password, DEFAULT_CAPTCHA_RETRIES)
             client.login()
             result = client.get_transactions(from_date, to_date, account_number)
