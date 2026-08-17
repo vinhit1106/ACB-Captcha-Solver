@@ -1,0 +1,8 @@
+﻿tensorflow==2.15.1
+flask
+flask-cors
+pillow
+torch
+torchvision
+numpy
+opencv-python
