@@ -1,5 +1,6 @@
 flask
-flask-cors
 pillow
 numpy
 onnxruntime
+requests
+beautifulsoup4
