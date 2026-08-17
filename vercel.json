@@ -3,7 +3,7 @@
   "functions": {
     "index.py": {
       "includeFiles": "acb_prediction_model.onnx",
-      "excludeFiles": "{app.py,acb_model.h5,acb_prediction_model.h5,convert_model_to_onnx.py,verify_onnx_model.py,CaptchaAPI.spec}"
+      "excludeFiles": "{legacy_tensorflow_reference.py,acb_model.h5,acb_prediction_model.h5,convert_model_to_onnx.py,verify_onnx_model.py,CaptchaAPI.spec}"
     }
   }
 }
