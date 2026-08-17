@@ -1,29 +1,35 @@
-# Virtual environment
+# Virtual environments
 venv/
 .venv/
 
-# Python cache
+# Python caches and test/tool caches
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Environment variables
 .env
 .env.*
 !.env.example
 
-# IDE
+# IDE and OS files
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs and local Vercel files
 *.log
+.vercel/
+.streamlit/
 
-# PyInstaller
+# Local packaging artifacts
 build/
 dist/
 *.spec
+
+# Legacy TensorFlow/Keras model exports are development-only.
+*.h5

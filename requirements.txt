@@ -1,5 +1,5 @@
-tensorflow==2.16.2
 flask
 flask-cors
 pillow
 numpy
+onnxruntime
